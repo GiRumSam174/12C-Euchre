@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Stack Euchre (1v1)</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1b5e20">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<style>
+  :root {
+    --bg-color: #1b5e20; 
+    --card-width: 65px;
+    --card-height: 94px;
+    --card-radius: 6px;
+    --card-overlap: -35px;
+  }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: var(--bg-color);
+    color: white;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    height: 100dvh; 
+    overflow: hidden;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* --- HEADER --- */
+  header {
+    width: 100%;
+    height: 45px;
+    padding: 0 15px;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    box-sizing: border-box;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    font-size: 0.95rem;
+    z-index: 10;
+    flex-shrink: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .game-title { 
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-weight: bold; 
+      color: #ffca28; 
+      font-size: 1rem; 
+      white-space: nowrap;
+      text-transform: uppercase;
+      cursor: pointer;
+  }
+  
+  .score-text { 
+      font-weight: bold; 
+      color: white;
+      font-size: 0.9rem;
+  }
+  
+  /* --- GAME AREA --- */
+  #game-area {
+    flex: 1;
+    width: 100%;
+    max-width: 800px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly; 
+    padding: 5px 0 10px 0; 
+    box-sizing: border-box;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  /* --- STACKS (Table Cards) --- */
+  .stack-row {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      height: 100px;
+      width: 100%;
+      z-index: 2;
+  }
+  
+  .card-stack {
+      width: var(--card-width);
+      height: var(--card-height);
+      position: relative;
+  }
+
+  /* --- HANDS (Held Cards) --- */
+  .hand-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+    width: 100%;
+    z-index: 5;
+    transition: opacity 0.2s;
+  }
+  
+  /* CPU Hand Specific Styling */
+  #cpu-hand-container {
+      height: 40px; 
+      opacity: 0.8;
+  }
+  
+  #cpu-hand-container .card {
+      transform: scale(0.6);
+      margin-left: -25px; 
+      transform-origin: center;
+  }
+  #cpu-hand-container .card:first-child {
+      margin-left: 0;
+  }
+
+  .hand-container.locked {
+      pointer-events: none !important;
+      opacity: 0.8;
+      filter: grayscale(0.3);
+  }
+  
+  /* --- CARD VISUALS --- */
+  .card {
+    width: var(--card-width);
+    height: var(--card-height);
+    background: white;
+    border-radius: var(--card-radius);
+    color: black;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    position: relative;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: transform 0.2s; 
+  }
+  
+  /* Stack Positioning */
+  .card.stack-down {
+      position: absolute;
+      top: 0; left: 0;
+      background: #0d47a1;
+      border: 2px solid white;
+      z-index: 1;
+  }
+  .card.stack-up {
+      position: absolute;
+      left: 0;
+      z-index: 2;
+  }
+  
+  #player-stacks .stack-up { top: -15px; }
+  #cpu-stacks .stack-up { top: 15px; }
+
+  .card-back {
+      background: #0d47a1 !important;
+      border: 2px solid white !important;
+  }
+
+  /* Player Hand Overlap */
+  #player-hand-container .card { margin-right: var(--card-overlap); z-index: 10; }
+  #player-hand-container .card:last-child { margin-right: 0; }
+
+  .card.playable { cursor: pointer; }
+  .card:not(.playable):not(.card-back):not(.stack-down) { filter: brightness(0.7); cursor: not-allowed; }
+  .card.playable:active { transform: scale(0.95); }
+
+  .card.red { color: #d32f2f; }
+  .card.black { color: #212121; }
+  
+  .card .corner { position: absolute; font-size: 0.8rem; display: flex; flex-direction: column; align-items: center; line-height: 0.9;}
+  .card .top-left { top: 3px; left: 3px; }
+  .card .bottom-right { bottom: 3px; right: 3px; transform: rotate(180deg); }
+  .card .suit-center { font-size: 2.2rem; }
+
+  /* --- TRICK AREA --- */
+  .table-center {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    align-items: center;
+    height: 120px;
+    z-index: 4;
+    position: relative;
+  }
+  
+  .trick-slot {
+      width: var(--card-width);
+      height: var(--card-height);
+      border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: var(--card-radius);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+  }
+  
+  .trick-card { position: absolute; }
+
+  /* --- ANIMATION --- */
+  #animation-layer {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 9999;
+  }
+  .flying-card {
+      position: absolute;
+      z-index: 1000;
+      box-shadow: 5px 5px 25px rgba(0,0,0,0.6);
+      transition: top 0.5s, left 0.5s;
+  }
+  .flip-anim { animation: flipIn 0.6s forwards; }
+  @keyframes flipIn {
+      0% { transform: rotateY(0); }
+      50% { transform: rotateY(90deg); background: #0d47a1; }
+      100% { transform: rotateY(0); background: white; }
+  }
+
+  /* --- UI PANELS --- */
+  #controls-area {
+    position: absolute;
+    top: 44%; 
+    left: 50%; 
+    transform: translate(-50%, -50%);
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    z-index: 200;
+    gap: 8px;
+  }
+
+  .action-panel {
+      background: rgba(0,0,0,0.95);
+      padding: 15px 20px;
+      border-radius: 12px;
+      pointer-events: auto;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      border: 1px solid #555;
+      width: 90%; 
+      max-width: 350px;
+  }
+
+  .btn-group { display: flex; gap: 4px; justify-content: center; width: 100%; }
+  
+  button {
+    padding: 10px 0; font-size: 0.9rem; background: #ffca28;
+    border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
+    color: #333; flex: 1;
+  }
+  button:active { background: #ffb300; }
+  .suit-btn { font-size: 1.4rem; line-height: 1; }
+  
+  /* --- TOAST --- */
+  #toast {
+    position: fixed;
+    top: 15%; 
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.85);
+    color: #ffca28;
+    padding: 10px 25px;
+    border-radius: 20px;
+    display: none;
+    z-index: 300;
+    border: 1px solid #555;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  }
+
+  /* --- TRUMP INDICATOR --- */
+  .trump-display {
+      position: absolute;
+      top: 60px; right: 10px;
+      background: rgba(245, 245, 245, 0.95);
+      padding: 2px 10px;
+      border-radius: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border: 1px solid #999;
+      pointer-events: none;
+      z-index: 100;
+      color: #333; 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  
+  /* --- OVERLAYS --- */
+  .overlay-bg {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); 
+    display: none; z-index: 999;
+    justify-content: center; align-items: center;
+  }
+  
+  .status-box {
+    background: #222; color: white; padding: 20px;
+    border-radius: 10px; border: 2px solid #ffca28;
+    max-width: 320px; text-align: center; width: 90%;
+  }
+
+  /* Info Modal */
+  .info-text { text-align: left; font-size: 0.85rem; color: #ccc; margin: 15px 0; background:rgba(255,255,255,0.1); padding:10px; border-radius:6px; }
+  .modal-actions { display: flex; gap: 5px; margin-top: 15px; }
+  .coffee-btn { background: #FFDD00; color: #000; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="score-text">CPU: <span id="c-score">0</span></div>
+  <div class="game-title" onclick="openInfo()">STACK EUCHRE</div>
+  <div class="score-text">YOU: <span id="p-score">0</span></div>
+</header>
+
+<div id="toast">Toast</div>
+<div id="animation-layer"></div>
+
+<div id="trump-indicator" class="trump-display" style="display:none">
+    <div id="trump-icon" style="font-size:1.8rem; line-height:1; margin-bottom:2px;"></div>
+    <div id="bid-status" style="font-size:0.85rem; color:#444; font-weight:bold;"></div>
+    <div id="tricks-status" style="font-size:0.95rem; color:#d32f2f; font-weight:bold; margin-top:4px;"></div>
+</div>
+
+<div id="status-overlay" class="overlay-bg">
+  <div class="status-box">
+    <h2 id="overlay-title" style="margin:0 0 10px 0; color:#ffca28;">Round Over</h2>
+    <div id="overlay-content" style="margin-bottom:20px; line-height:1.5;"></div>
+    <button id="overlay-btn" onclick="nextRound()">Next Round</button>
+  </div>
+</div>
+
+<div id="info-overlay" class="overlay-bg">
+    <div class="status-box">
+        <h2 style="color:#ffca28; margin:0;">STACK EUCHRE <span style="font-size:0.7em; color:#888;">v2.00</span></h2>
+        <div class="info-text">
+            <strong>Rank:</strong> Right Bower (J-Trump) > Left Bower (J-Color) > A > K > Q > 10 > 9.<br>
+            <strong>Play:</strong> You can play from your Hand OR the Face Up cards.<br>
+            <strong>Goal:</strong> Bid tricks (1-12). Maker leads first.
+        </div>
+        <div id="stats-display" style="font-size:0.9rem; margin-bottom:10px; color:#ddd;"></div>
+        <div class="modal-actions">
+            <button onclick="confirmReset()">New Game</button>
+            <button class="coffee-btn" onclick="window.open('https://buymeacoffee.com/classmarks','_blank')">Buy Me A Coffee</button>
+            <button style="background:#eee; color:#333;" onclick="closeInfo()">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="game-area">
+  
+  <div id="cpu-hand-container" class="hand-container"></div>
+
+  <div class="stack-row" id="cpu-stacks"></div>
+
+  <div class="table-center">
+      <div class="trick-slot" id="slot-cpu"></div>
+      <div class="trick-slot" id="slot-player"></div>
+  </div>
+
+  <div class="stack-row" id="player-stacks"></div>
+
+  <div class="hand-container" id="player-hand-container"></div>
+  
+  <div id="controls-area">
+      <div id="bid-panel" class="action-panel" style="display:none;">
+          <div style="color:#eee; margin-bottom:5px;">Bid Tricks (1-12)</div>
+          <div class="btn-group">
+              <button onclick="submitBid(1)">1</button>
+              <button onclick="submitBid(2)">2</button>
+              <button onclick="submitBid(3)">3</button>
+              <button onclick="submitBid(4)">4</button>
+              <button onclick="submitBid(5)">5</button>
+              <button onclick="submitBid(6)">6</button>
+          </div>
+          <div class="btn-group" style="margin-top:4px;">
+              <button onclick="submitBid(7)">7</button>
+              <button onclick="submitBid(8)">8</button>
+              <button onclick="submitBid(9)">9</button>
+              <button onclick="submitBid(10)">10</button>
+              <button onclick="submitBid(11)">11</button>
+              <button onclick="submitBid(12)">12</button>
+          </div>
+      </div>
+
+      <div id="suit-panel" class="action-panel" style="display:none;">
+        <div style="color:#eee; margin-bottom:5px;">Name Trump</div>
+        <div class="btn-group">
+            <button class="suit-btn black" onclick="selectTrump('♠')">♠</button>
+            <button class="suit-btn black" onclick="selectTrump('♣')">♣</button>
+            <button class="suit-btn red" onclick="selectTrump('♥')">♥</button>
+            <button class="suit-btn red" onclick="selectTrump('♦')">♦</button>
+        </div>
+      </div>
+  </div>
+
+</div>
+
+<script>
+/* --- CONFIG --- */
+const SUITS = ['♠', '♥', '♣', '♦'];
+const COLORS = {'♠':'black', '♣':'black', '♥':'red', '♦':'red'};
+const VALUES = ['9', '10', 'J', 'Q', 'K', 'A'];
+const RANK_ORDER = { '9':0, '10':1, 'J':2, 'Q':3, 'K':4, 'A':5 };
+const TARGET_SCORE = 15; 
+
+/* --- STATE --- */
+let deck = [];
+let pHand = [];
+let cHand = [];
+let pStacks = []; 
+let cStacks = [];
+
+let playerScore = 0;
+let cpuScore = 0;
+let winningBid = 0;
+let maker = null;
+let trumpSuit = null;
+let tricksPlayer = 0;
+let tricksCpu = 0;
+let tricksPlayed = 0;
+let turn = null; 
+let isRoundOver = false;
+let currentTrick = []; 
+let uiTimer = null;
+
+let stats = { hp:0, hw:0, mp:0, mw:0 };
+try { let s = localStorage.getItem('stack-euchre-stats'); if(s) stats = JSON.parse(s); } catch(e){}
+
+/* --- DOM --- */
+const elPHand = document.getElementById('player-hand-container');
+const elCHand = document.getElementById('cpu-hand-container');
+const elPStacks = document.getElementById('player-stacks');
+const elCStacks = document.getElementById('cpu-stacks');
+const elSlotP = document.getElementById('slot-player');
+const elSlotC = document.getElementById('slot-cpu');
+const elToast = document.getElementById('toast');
+const elOverlay = document.getElementById('status-overlay');
+
+/* --- CORE --- */
+function resetGame() {
+    playerScore = 0; cpuScore = 0;
+    updateScoreUI();
+    startRound();
+}
+
+function startRound() {
+    isRoundOver = false;
+    tricksPlayed = 0; tricksPlayer = 0; tricksCpu = 0;
+    currentTrick = [];
+    winningBid = 0; maker = null; trumpSuit = null;
+    turn = null;
+    
+    updateTrickUI(); 
+
+    document.getElementById('bid-panel').style.display = 'none';
+    document.getElementById('suit-panel').style.display = 'none';
+    document.getElementById('trump-indicator').style.display = 'none';
+    elOverlay.style.display = 'none';
+    elSlotP.innerHTML = ''; elSlotC.innerHTML = '';
+    
+    createDeck();
+    deal();
+    renderAll();
+    
+    showToast("Bidding Phase");
+    document.getElementById('bid-panel').style.display = 'block';
+}
+
+function createDeck() {
+    deck = [];
+    for(let s of SUITS) for(let v of VALUES) {
+        deck.push({ val:v, suit:s, color:COLORS[s], id:Math.random().toString(36).substr(2,9) });
+    }
+    for(let i=deck.length-1; i>0; i--) {
+        const j = Math.floor(Math.random()*(i+1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+}
+
+function deal() {
+    let idx = 0;
+    pHand = deck.slice(idx, idx+4); idx+=4;
+    cHand = deck.slice(idx, idx+4); idx+=4;
+    
+    pStacks = []; cStacks = [];
+    for(let i=0; i<4; i++) {
+        pStacks.push({ down: deck[idx], up: null }); idx++;
+        cStacks.push({ down: deck[idx], up: null }); idx++;
+    }
+    for(let i=0; i<4; i++) {
+        pStacks[i].up = deck[idx]; idx++;
+        cStacks[i].up = deck[idx]; idx++;
+    }
+    
+    sortHand(pHand);
+    sortHand(cHand);
+}
+
+function sortHand(h) {
+    h.sort((a,b) => {
+        if(a.suit !== b.suit) return SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit);
+        return RANK_ORDER[a.val] - RANK_ORDER[b.val];
+    });
+}
+
+/* --- LOGIC: Bidding --- */
+function submitBid(bid) {
+    document.getElementById('bid-panel').style.display = 'none';
+    
+    let strength = evalStrength(cHand) + evalStrength(cStacks.map(s => s.up).filter(c=>c));
+    let cBid = Math.round(strength * 0.8); 
+    if(cBid < 1) cBid = 1;
+    if(cBid > 12) cBid = 12;
+    
+    showToast(`You Bid ${bid}. CPU Bids ${cBid}`);
+    
+    if(bid >= cBid) {
+        winningBid = bid; maker = 'player';
+        setTimeout(() => { document.getElementById('suit-panel').style.display = 'block'; }, 1000);
+    } else {
+        winningBid = cBid; maker = 'cpu';
+        setTimeout(cpuPickTrump, 1000);
+    }
+}
+
+function evalStrength(cards) {
+    let s = 0;
+    cards.forEach(c => {
+        if(c.val==='A') s+=1.2;
+        else if(c.val==='K') s+=0.8;
+        else if(c.val==='Q' || c.val==='J') s+=0.5;
+    });
+    return s;
+}
+
+function selectTrump(s) {
+    document.getElementById('suit-panel').style.display = 'none';
+    trumpSuit = s;
+    startPlay();
+}
+
+function cpuPickTrump() {
+    let counts = {'♠':0, '♥':0, '♣':0, '♦':0};
+    let allVis = [...cHand, ...cStacks.map(s=>s.up).filter(x=>x)];
+    
+    allVis.forEach(c => {
+        let w = 1;
+        if(c.val==='J') w=3; if(c.val==='A') w=2;
+        counts[c.suit] += w;
+    });
+    trumpSuit = Object.keys(counts).reduce((a,b) => counts[a]>counts[b]?a:b);
+    showToast(`CPU Chose ${trumpSuit}`);
+    setTimeout(startPlay, 1000);
+}
+
+/* --- LOGIC: Play --- */
+function startPlay() {
+    updateTrumpUI();
+    updateInputLock(maker === 'cpu'); 
+    
+    if(maker === 'cpu') {
+        turn = 'cpu';
+        setTimeout(cpuTurn, 1000);
+    } else {
+        turn = 'player';
+        showToast("Your Lead");
+        highlightPlayable();
+    }
+}
+
+function getPlayableCards(hand, stacks) {
+    let candidates = [...hand];
+    stacks.forEach((s, i) => { if(s.up) candidates.push({...s.up, source:'stack', stackIdx:i}); });
+    candidates = candidates.map(c => c.source ? c : {...c, source:'hand'});
+    
+    if(currentTrick.length === 0) return candidates; 
+    
+    let leadSuit = getEffSuit(currentTrick[0].card);
+    let followers = candidates.filter(c => getEffSuit(c) === leadSuit);
+    return followers.length > 0 ? followers : candidates;
+}
+
+/* --- CARD INTERACTIONS --- */
+function onCardClick(card, source, idx) {
+    if(turn !== 'player' || isRoundOver) return;
+    
+    let valid = getPlayableCards(pHand, pStacks);
+    let isGood = valid.find(v => v.id === card.id);
+    
+    if(!isGood) { showToast("Must Follow Suit!"); return; }
+    
+    // IMMEDIATE LOCK
+    turn = null; 
+    updateInputLock(true);
+    
+    playCard(card, 'player', source, idx);
+}
+
+function playCard(card, who, source, idx) {
+    let startEl = document.getElementById(`${who}-card-${card.id}`);
+    
+    // Fallback if CPU plays from hand
+    if(!startEl && who === 'cpu') {
+        startEl = elCHand.lastElementChild || elCHand;
+    }
+
+    let destEl = document.getElementById(who==='player'?'slot-player':'slot-cpu');
+    animateCard(startEl, destEl, card);
+    
+    if(who === 'player') {
+        if(source === 'hand') {
+            pHand = pHand.filter(c => c.id !== card.id);
+        } else {
+            pStacks[idx].up = null; 
+            if(pStacks[idx].down) {
+                setTimeout(() => flipStackCard(idx, 'player'), 600);
+            }
+        }
+    } else {
+        if(source === 'hand') {
+            cHand = cHand.filter(c => c.id !== card.id);
+        } else {
+            cStacks[idx].up = null;
+            if(cStacks[idx].down) {
+                setTimeout(() => flipStackCard(idx, 'cpu'), 600);
+            }
+        }
+    }
+    
+    currentTrick.push({owner:who, card:card});
+    renderAll();
+    
+    if(currentTrick.length === 1) {
+        turn = (who==='player'?'cpu':'player');
+        if(turn === 'cpu') {
+            updateInputLock(true);
+            setTimeout(cpuTurn, 1000);
+        } else {
+            showToast("Your Turn");
+            highlightPlayable();
+            updateInputLock(false);
+        }
+    } else {
+        resolveTrick();
+    }
+}
+
+function flipStackCard(idx, who) {
+    let stacks = who==='player' ? pStacks : cStacks;
+    let card = stacks[idx].down;
+    if(!card) return;
+    
+    stacks[idx].down = null;
+    stacks[idx].up = card; 
+    renderAll(); 
+    let el = document.getElementById(`${who}-card-${card.id}`);
+    if(el) el.classList.add('flip-anim');
+}
+
+/* --- CPU LOGIC --- */
+function cpuTurn() {
+    let candidates = getPlayableCards(cHand, cStacks);
+    if(!candidates || candidates.length === 0) return;
+
+    let best = null;
+    
+    if(currentTrick.length === 0) {
+        candidates.sort((a,b) => getPower(b) - getPower(a));
+        best = candidates[0];
+    } else {
+        let leadSuit = getEffSuit(currentTrick[0].card);
+        let leadPower = getPower(currentTrick[0].card, leadSuit);
+        let winners = candidates.filter(c => getPower(c, leadSuit) > leadPower);
+        
+        if(winners.length > 0) {
+            winners.sort((a,b) => getPower(a, leadSuit) - getPower(b, leadSuit));
+            best = winners[0];
+        } else {
+            candidates.sort((a,b) => getPower(a, leadSuit) - getPower(b, leadSuit));
+            best = candidates[0];
+        }
+    }
+    
+    let src = best.source;
+    let idx = best.stackIdx; 
+    if(src === 'hand') idx = -1;
+    
+    playCard(best, 'cpu', src, idx);
+}
+
+function resolveTrick() {
+    turn = null; 
+    updateInputLock(true);
+
+    let c1 = currentTrick[0];
+    let c2 = currentTrick[1];
+    
+    let leadSuit = getEffSuit(c1.card);
+    let p1 = getPower(c1.card, leadSuit);
+    let p2 = getPower(c2.card, leadSuit);
+    
+    let winner = (p1 >= p2) ? c1.owner : c2.owner;
+    
+    setTimeout(() => {
+        if(winner === 'player') {
+            tricksPlayer++;
+            showToast("You Won Trick");
+            turn = 'player';
+        } else {
+            tricksCpu++;
+            showToast("CPU Won Trick");
+            turn = 'cpu';
+        }
+        
+        updateTrickUI();
+        elSlotP.innerHTML = ''; elSlotC.innerHTML = '';
+        currentTrick = [];
+        tricksPlayed++;
+        
+        if(tricksPlayed === 12) {
+            endRound();
+        } else {
+            if(turn === 'cpu') setTimeout(cpuTurn, 800);
+            else { 
+                showToast("Your Lead"); 
+                highlightPlayable(); 
+                updateInputLock(false); 
+            }
+        }
+    }, 1200);
+}
+
+/* --- HELPERS --- */
+function getEffSuit(c) {
+    if(c.val !== 'J') return c.suit;
+    if(c.suit === trumpSuit) return trumpSuit;
+    let pair = {'♠':'♣', '♣':'♠', '♥':'♦', '♦':'♥'};
+    if(c.suit === pair[trumpSuit]) return trumpSuit;
+    return c.suit;
+}
+
+function getPower(c, lead) {
+    let s = getEffSuit(c);
+    let val = RANK_ORDER[c.val]; 
+    
+    if(s === trumpSuit) {
+        if(c.val === 'J') {
+            if(c.suit === trumpSuit) return 200; // Right Bower
+            return 199; // Left Bower
+        }
+        return 100 + val; 
+    } 
+    
+    if(s === lead) {
+        return 50 + val;
+    }
+    
+    return val;
+}
+
+/* --- END GAME --- */
+function endRound() {
+    isRoundOver = true;
+    turn = null;
+    updateInputLock(true);
+    
+    stats.hp++;
+    
+    let mkTricks = maker==='player' ? tricksPlayer : tricksCpu;
+    let made = mkTricks >= winningBid;
+    let pts = winningBid;
+    
+    let msg = "";
+    if(made) {
+        if(maker==='player') { playerScore += pts; msg=`You Made Bid (+${pts})`; }
+        else { cpuScore += pts; msg=`CPU Made Bid (+${pts})`; }
+    } else {
+        if(maker==='player') { cpuScore += pts; msg=`You Failed Bid (CPU +${pts})`; }
+        else { playerScore += pts; msg=`CPU Failed Bid (You +${pts})`; }
+    }
+    
+    updateScoreUI();
+    
+    let title = "Round Over";
+    let btnText = "Next Round";
+    let clickFn = "nextRound()";
+    
+    if(playerScore >= TARGET_SCORE || cpuScore >= TARGET_SCORE) {
+        stats.mp++;
+        if(playerScore >= TARGET_SCORE) { stats.mw++; title="YOU WIN!"; }
+        else title="GAME OVER";
+        btnText = "New Game";
+        clickFn = "resetGame()";
+        saveStats();
+    }
+    
+    document.getElementById('overlay-title').innerText = title;
+    document.getElementById('overlay-content').innerHTML = msg;
+    let btn = document.getElementById('overlay-btn');
+    btn.innerText = btnText;
+    btn.setAttribute('onclick', clickFn);
+    elOverlay.style.display = 'flex';
+}
+
+function nextRound() { startRound(); }
+
+/* --- RENDER --- */
+function renderAll() {
+    // Player Hand
+    elPHand.innerHTML = '';
+    pHand.forEach((c, i) => {
+        let el = createCardEl(c);
+        el.id = `player-card-${c.id}`;
+        el.onclick = () => onCardClick(c, 'hand', i);
+        elPHand.appendChild(el);
+    });
+    
+    // CPU Hand (Dynamic)
+    elCHand.innerHTML = '';
+    cHand.forEach((c) => {
+        let div = document.createElement('div');
+        div.className = 'card card-back';
+        elCHand.appendChild(div);
+    });
+    
+    // Player Stacks
+    elPStacks.innerHTML = '';
+    pStacks.forEach((s, i) => {
+        let container = document.createElement('div');
+        container.className = 'card-stack';
+        
+        if(s.down) {
+            let down = document.createElement('div');
+            down.className = 'card stack-down';
+            container.appendChild(down);
+        }
+        if(s.up) {
+            let up = createCardEl(s.up);
+            up.id = `player-card-${s.up.id}`;
+            up.className += ' stack-up';
+            up.onclick = () => onCardClick(s.up, 'stack', i);
+            container.appendChild(up);
+        }
+        elPStacks.appendChild(container);
+    });
+    
+    // CPU Stacks
+    elCStacks.innerHTML = '';
+    cStacks.forEach((s, i) => {
+        let container = document.createElement('div');
+        container.className = 'card-stack';
+        if(s.down) {
+            let down = document.createElement('div');
+            down.className = 'card stack-down';
+            container.appendChild(down);
+        }
+        if(s.up) {
+            let up = createCardEl(s.up);
+            up.id = `cpu-card-${s.up.id}`;
+            up.className += ' stack-up';
+            container.appendChild(up);
+        }
+        elCStacks.appendChild(container);
+    });
+    
+    if(turn === 'player') highlightPlayable();
+}
+
+function createCardEl(c) {
+    let d = document.createElement('div');
+    d.className = `card ${c.color}`;
+    d.innerHTML = `
+        <div class="corner top-left"><span>${c.val}</span><span>${c.suit}</span></div>
+        <div class="suit-center">${c.suit}</div>
+        <div class="corner bottom-right"><span>${c.val}</span><span>${c.suit}</span></div>
+    `;
+    return d;
+}
+
+function highlightPlayable() {
+    if(turn !== 'player') return;
+    let valid = getPlayableCards(pHand, pStacks);
+    
+    document.querySelectorAll('#player-hand-container .card, #player-stacks .stack-up').forEach(el => {
+        el.classList.remove('playable');
+    });
+    
+    valid.forEach(c => {
+        let el = document.getElementById(`player-card-${c.id}`);
+        if(el) el.classList.add('playable');
+    });
+}
+
+function updateInputLock(locked) {
+    if(locked) {
+        elPHand.classList.add('locked');
+        elPStacks.classList.add('locked'); 
+    } else {
+        elPHand.classList.remove('locked');
+        elPStacks.classList.remove('locked');
+    }
+}
+
+function animateCard(src, dest, card) {
+    if(!src) return;
+    let flyer = src.cloneNode(true);
+    let rect = src.getBoundingClientRect();
+    
+    flyer.classList.add('flying-card');
+    flyer.style.top = rect.top + 'px';
+    flyer.style.left = rect.left + 'px';
+    flyer.classList.remove('stack-up', 'stack-down', 'playable'); 
+    
+    document.getElementById('animation-layer').appendChild(flyer);
+    
+    let dRect = dest.getBoundingClientRect();
+    flyer.offsetHeight;
+    flyer.style.top = dRect.top + 'px';
+    flyer.style.left = dRect.left + 'px';
+    
+    setTimeout(() => {
+        flyer.remove();
+        let staticC = createCardEl(card);
+        staticC.style.position='absolute';
+        dest.appendChild(staticC);
+    }, 500);
+}
+
+function updateScoreUI() {
+    document.getElementById('p-score').innerText = playerScore;
+    document.getElementById('c-score').innerText = cpuScore;
+}
+function updateTrumpUI() {
+    const el = document.getElementById('trump-indicator');
+    if(!trumpSuit) { el.style.display='none'; return; }
+    el.style.display='flex';
+    document.getElementById('trump-icon').innerHTML = `<span style="color:${COLORS[trumpSuit]}">${trumpSuit}</span>`;
+    document.getElementById('bid-status').innerText = `${maker==='player'?'YOU':'CPU'} Bid ${winningBid}`;
+}
+function updateTrickUI() {
+    document.getElementById('tricks-status').innerText = `You:${tricksPlayer} CPU:${tricksCpu}`;
+}
+function showToast(m) {
+    elToast.innerText = m; elToast.style.display='block';
+    setTimeout(()=>elToast.style.display='none', 2000);
+}
+function saveStats() { localStorage.setItem('stack-euchre-stats', JSON.stringify(stats)); }
+
+/* --- MENU --- */
+function openInfo() {
+    let s = stats;
+    let hp = s.hp>0?Math.round(s.hw/s.hp*100):0;
+    let mp = s.mp>0?Math.round(s.mw/s.mp*100):0;
+    document.getElementById('stats-display').innerHTML = 
+        `Hands Won: ${s.hw}/${s.hp} (${hp}%)<br>Matches Won: ${s.mw}/${s.mp} (${mp}%)`;
+    document.getElementById('info-overlay').style.display = 'flex';
+}
+function closeInfo() { document.getElementById('info-overlay').style.display='none'; }
+function confirmReset() { if(confirm('Quit?')) resetGame(); }
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+}
+resetGame();
+
+</script>
+</body>
+</html>
