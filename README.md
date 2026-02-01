@@ -1,4 +1,4 @@
-Fun to play, twelve-card hand offline variant of two player Euchre that plays well on your smartphone in portrait mode. 
+Fun to play, twelve-card offline variant of two player Euchre that plays well on your smartphone in portrait mode. The game is typically known as "Stack" Euchre.
 
 It's just you versus your CPU. No adds and no special permissions! 
 
